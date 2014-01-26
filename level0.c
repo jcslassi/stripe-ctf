@@ -34,101 +34,106 @@ unsigned int DEKHash (unsigned char *, unsigned int);
 void err(char *msg, ...);
 void load_words(unsigned char[], char *);
 void insert_word(unsigned char[], char *);
-int in_dict(unsigned char[], char *);
+unsigned int in_dict(unsigned char[], char *);
 void get_hashes(unsigned int[], char *);
 
-int main(int argc, char *argv[])
+
+int main(void)
 {
 
 #ifdef GEN_FILTER
-    printf("Bloom filter generation mode\n");
+    printf("/* Bloom filter generated with 2^%d filter size.\n", FILTER_SIZE);
+    printf("   And %d hash functions. */\n", NUM_HASHES);
 
-    #include "dict.c"
+#include "dict.c"
 
-	char *p;
+    char *p;
     unsigned char filter[FILTER_SIZE_BYTES];
 
     int n;
     n = 0;
-	while (n<234936) {
-		if ((p=strchr(dict[n], '\r'))) *p='\0';
-		if ((p=strchr(dict[n], '\n'))) *p='\0';
+    while (n<234936) {
+        if ((p=strchr(dict[n], '\r'))) *p='\0';
+        if ((p=strchr(dict[n], '\n'))) *p='\0';
         insert_word(filter, dict[n]);
         n++;
-	}
+    }
 
     n = 0;
-    printf("{");
+    printf("unsigned char filter[FILTER_SIZE_BYTES] = {");
     for (n = 0; n < sizeof(filter); n++)
         printf("0x%x, ", filter[n]);
-        if (n % 20 == 0)
-            printf("};\n");
-#else 
+    printf("};\n");
+#else
 
-    #include "filter.c"
+#include "filter.c"
 
     register unsigned int n;
 
-#endif 
+#endif
 
-    char * output = malloc(sizeof(char) * 1024 * 1024);
-    register unsigned int output_i = 0;
- 
-    char * wordbuf = malloc(sizeof(char) * 1024);
+#define I_BUFSIZE (int)(4096 * 4)
+#define O_BUFSIZE (int)(4096 * 2)
+
+    char output[O_BUFSIZE];
+    setvbuf(stdout, output, _IOFBF, sizeof(output));
+
+    char wordbuf[40];
     register unsigned int wordbuf_i = 0;
- 
-    char * checkbuf = malloc(sizeof(char) * 1024);
+
+    char checkbuf[40];
     register unsigned int checkbuf_i = 0;
- 
-    #define READBUF (int)512
-    char * buf = malloc(sizeof(char) * READBUF);
- 
+
+    char * buf = malloc(I_BUFSIZE);
+
     char c;
-    while ((n = read(0, buf, READBUF)) > 0) {
-        int i;
-        for (i=0; i<n; i++) {
-            c = buf[i];
- 
-            if (c == '\0') {
-                break;
-            }
- 
-            wordbuf[wordbuf_i] = c;
-            if (c >= 'A' && c <= 'Z') {
-                checkbuf[checkbuf_i] = c | (char)0x20;
-            } else {
-                checkbuf[checkbuf_i] = c;
-            }
- 
-            if (c == ' ' || c == '\n') {
-                if (wordbuf_i != 0) {
-                    wordbuf[wordbuf_i] = '\0';
-                    checkbuf[checkbuf_i] = '\0';
- 
-                    if (!in_dict(filter, checkbuf)) {
-                        output[output_i++] = '<';
-                        memcpy(output + output_i, wordbuf, wordbuf_i);
-                        output_i += wordbuf_i;
-                        output[output_i++] = '>';
-                    } else {
-                        memcpy(output + output_i, wordbuf, wordbuf_i);
-                        output_i += wordbuf_i;
-                    }
- 
-                    wordbuf_i = 0;
-                    checkbuf_i = 0;
+
+    n = fread(buf, 1, I_BUFSIZE, stdin);
+    register unsigned int i;
+    for (i=0; i<n; i++) {
+        c = buf[i];
+
+        if (c == '\0') {
+            break;
+        }
+
+        wordbuf[wordbuf_i] = c;
+
+        checkbuf[checkbuf_i] = c | (char)0x20;
+
+        if (c == ' ' || c == '\n') {
+            if (wordbuf_i != 0) {
+                wordbuf[wordbuf_i] = '\0';
+                checkbuf[checkbuf_i] = '\0';
+
+                // If comparing uint32_t.
+                checkbuf[checkbuf_i + 1] = '\0';
+                checkbuf[checkbuf_i + 2] = '\0';
+                checkbuf[checkbuf_i + 3] = '\0';
+
+                if (!in_dict(filter, checkbuf)) {
+                //if (1) {
+                    putc('<', stdout);
+                    fwrite(wordbuf, wordbuf_i, 1, stdout);
+                    putc('>', stdout);
+                } else {
+                    // Print the word.
+                    fwrite(wordbuf, wordbuf_i, 1, stdout);
                 }
- 
-                output[output_i++] = c;
-            } else {
-                wordbuf_i++;
-                checkbuf_i++;
+
+                // Compiler probably already does this
+                wordbuf_i ^= wordbuf_i;
+                checkbuf_i ^= checkbuf_i;
             }
+
+            putc(c, stdout);
+        } else {
+            wordbuf_i++;
+            checkbuf_i++;
         }
     }
- 
-    fwrite(output, output_i, 1, stdout);
 
+    fflush(stdout);
     return 0;
 }
 
@@ -160,10 +165,10 @@ void insert_word(unsigned char filter[], char *str)
 }
 
 
-inline int in_dict(unsigned char filter[], char *str)
+inline unsigned int in_dict(unsigned char filter[], char *str)
 {
     unsigned int hash[NUM_HASHES];
-    int i;
+    register unsigned int i;
 
     get_hashes(hash, str);
 
@@ -307,9 +312,11 @@ inline unsigned int FNVHash(unsigned char *str, unsigned int len)
                        +(uint32_t)(((const uint8_t *)(d))[0]) )
 #endif
 
+// SuperFastHash (sounds legit)
+// http://www.azillionmonkeys.com/qed/hash.html
 uint32_t SFHash (unsigned char * data, unsigned int len) {
-uint32_t hash = len, tmp;
-int rem;
+    uint32_t hash = len, tmp;
+    int rem;
 
     if (len <= 0 || data == NULL) return 0;
 
@@ -317,7 +324,7 @@ int rem;
     len >>= 2;
 
     /* Main loop */
-    for (;len > 0; len--) {
+    for (; len > 0; len--) {
         hash  += get16bits (data);
         tmp    = (get16bits (data+2) << 11) ^ hash;
         hash   = (hash << 16) ^ tmp;
@@ -327,18 +334,21 @@ int rem;
 
     /* Handle end cases */
     switch (rem) {
-        case 3: hash += get16bits (data);
-                hash ^= hash << 16;
-                hash ^= ((signed char)data[sizeof (uint16_t)]) << 18;
-                hash += hash >> 11;
-                break;
-        case 2: hash += get16bits (data);
-                hash ^= hash << 11;
-                hash += hash >> 17;
-                break;
-        case 1: hash += (signed char)*data;
-                hash ^= hash << 10;
-                hash += hash >> 1;
+    case 3:
+        hash += get16bits (data);
+        hash ^= hash << 16;
+        hash ^= ((signed char)data[sizeof (uint16_t)]) << 18;
+        hash += hash >> 11;
+        break;
+    case 2:
+        hash += get16bits (data);
+        hash ^= hash << 11;
+        hash += hash >> 17;
+        break;
+    case 1:
+        hash += (signed char)*data;
+        hash ^= hash << 10;
+        hash += hash >> 1;
     }
 
     /* Force "avalanching" of final 127 bits */
@@ -351,3 +361,14 @@ int rem;
 
     return hash;
 }
+
+uint32_t toupper2(uint32_t eax)
+{
+    uint32_t ebx = (0x7f7f7f7ful & eax) + 0x05050505ul;
+    ebx = (0x7f7f7f7ful & ebx) + 0x1a1a1a1aul;
+    ebx = ((ebx & ~eax) >> 2 ) & 0x20202020ul;
+    return eax - ebx;
+}
+//
+// http://www.splicd.com/gwx87LLZib8/20/30
+//

@@ -4,6 +4,11 @@
 make
 # Warming
 echo "Warming..."
-./level0 < long.txt > /dev/null
-./level0 < long.txt > /dev/null
-./level0 < long.txt > /dev/null
+if [ -f ./level0 ]; then
+    strip level0
+    ./level0 < long.txt > /dev/null
+    ./level0 < long.txt > /dev/null
+    ./level0 < long.txt > /dev/null
+    ./level0 < long.txt > /dev/null
+    ./level0 < long.txt > /dev/null
+fi    
