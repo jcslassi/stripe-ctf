@@ -1,7 +1,7 @@
 //
 // http://www.splicd.com/AAEJedBQk7s/19/43
 //
-//#define GEN_FILTER 1
+//#define GEN_FILTER 0x5ca1ab1e
 
 #include <stdio.h>
 #include <ctype.h>
@@ -40,6 +40,7 @@ void get_hashes(unsigned int[], char *);
 
 int main(void)
 {
+    register unsigned int n;
 
 #ifdef GEN_FILTER
     printf("/* Bloom filter generated with 2^%d filter size.\n", FILTER_SIZE);
@@ -50,7 +51,6 @@ int main(void)
     char *p;
     unsigned char filter[FILTER_SIZE_BYTES];
 
-    int n;
     n = 0;
     while (n<234936) {
         if ((p=strchr(dict[n], '\r'))) *p='\0';
@@ -61,19 +61,19 @@ int main(void)
 
     n = 0;
     printf("unsigned char filter[FILTER_SIZE_BYTES] = {");
-    for (n = 0; n < sizeof(filter); n++)
-        printf("0x%x, ", filter[n]);
+    for (n = 0; n < sizeof(filter); n++) {
+        printf("0x%x,", filter[n]);
+    }
+        
     printf("};\n");
 #else
 
 #include "filter.c"
 
-    register unsigned int n;
-
 #endif
 
-#define I_BUFSIZE (int)(4096 * 4)
-#define O_BUFSIZE (int)(4096 * 2)
+    #define I_BUFSIZE (int)(4096 * 4)
+    #define O_BUFSIZE (int)(4096 * 2)
 
     char output[O_BUFSIZE];
     setvbuf(stdout, output, _IOFBF, sizeof(output));
@@ -106,18 +106,11 @@ int main(void)
                 wordbuf[wordbuf_i] = '\0';
                 checkbuf[checkbuf_i] = '\0';
 
-                // If comparing uint32_t.
-                checkbuf[checkbuf_i + 1] = '\0';
-                checkbuf[checkbuf_i + 2] = '\0';
-                checkbuf[checkbuf_i + 3] = '\0';
-
                 if (!in_dict(filter, checkbuf)) {
-                //if (1) {
                     putc('<', stdout);
                     fwrite(wordbuf, wordbuf_i, 1, stdout);
                     putc('>', stdout);
                 } else {
-                    // Print the word.
                     fwrite(wordbuf, wordbuf_i, 1, stdout);
                 }
 
@@ -190,10 +183,10 @@ void get_hashes(unsigned int hash[], char *in)
     hash[1] = DJBHash (str, pos);
     hash[2] = FNVHash (str, pos);
     hash[3] = JSHash  (str, pos);
-    /* hash[4] = PJWHash (str, pos); */
     hash[4] = SFHash (str, pos);
     hash[5] = SDBMHash(str, pos);
     hash[6] = DEKHash (str, pos);
+    hash[7] = PJWHash (str, pos);
 }
 
 inline unsigned int RSHash(unsigned char *str, unsigned int len)
